@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 from PIL import Image, ImageTk
 from datetime import datetime
+import csv
+import os
+
 
 # Objekterkennung-Modul
 class ObjectDetector:
@@ -55,9 +58,38 @@ class LicensePlateGUI:
         self.root.title("License Plate Recognition")
         self.root.geometry("1200x800")
         self.detection_zone = (200, 200, 400, 300)  # x1, y1, x2, y2
-        self.allowed_plates = ["ABC123", "XYZ789"]
+        #self.allowed_plates = ["ABC123", "XYZ789"]
+        self.allowed_plates = self.load_allowed_plates()  # CSV laden
         
         self.setup_gui()
+
+    def load_allowed_plates(self):
+        """Lädt erlaubte Kennzeichen aus einer CSV-Datei"""
+        allowed_plates = []
+        csv_path = os.path.join(os.path.dirname(__file__), "Kennzeichen.csv")
+        try:
+            with open(csv_path, 'r', encoding='utf-8-sig', newline='') as csvfile:
+                reader = csv.reader(csvfile, delimiter=';')
+                # Angenommen, die CSV hat eine Spalte mit Kennzeichen
+                for row in reader:
+                    if row:  # Prüft, ob die Zeile nicht leer ist
+                        allowed_plates.append(row[0].strip())
+        except FileNotFoundError:
+            print("CSV-Datei nicht gefunden. Erstelle leere Liste.")
+        except Exception as e:
+            print(f"Fehler beim Laden der CSV: {e}")
+        return allowed_plates
+    
+    def save_allowed_plates(self):
+        """Speichert die erlaubten Kennzeichen in die CSV-Datei"""
+        csv_path = os.path.join(os.path.dirname(__file__), "Kennzeichen.csv")
+        try:
+            with open(csv_path, 'w', encoding='utf-8-sig', newline='') as csvfile:
+             writer = csv.writer(csvfile, delimiter=';')
+             for plate in self.allowed_plates:
+                writer.writerow([plate])  # Schreibe jedes Kennzeichen als eigene Zeile
+        except Exception as e:
+            print(f"Fehler beim Speichern der CSV: {e}")
 
     def setup_gui(self):
         # Webcam Frame
@@ -110,6 +142,7 @@ class LicensePlateGUI:
         if new_plate and new_plate not in self.allowed_plates:
             self.allowed_plates.append(new_plate)
             self.update_plate_list()
+            self.save_allowed_plates()  # Speichere die aktualisierte Liste in die CSV
             self.new_plate_entry.delete(0, "end")
 
     def remove_plate(self):
@@ -117,6 +150,7 @@ class LicensePlateGUI:
         if selected in self.allowed_plates:
             self.allowed_plates.remove(selected)
             self.update_plate_list()
+            self.save_allowed_plates()
 
 # Hauptklasse
 class LicensePlateApp:
