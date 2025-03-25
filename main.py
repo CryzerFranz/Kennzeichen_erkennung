@@ -5,27 +5,46 @@ from PIL import Image, ImageTk
 from datetime import datetime
 import csv
 import os
+import easyocr
+from ultralytics import YOLO
+
+
 
 
 # Objekterkennung-Modul
 class ObjectDetector:
     def __init__(self):
-        # Hier echte YOLO-Implementierung initialisieren
-        pass
+        self.model = YOLO("license_plate_detector.pt")
     
-    #def detect(self, frame):
-        # Simulierte Erkennung
-        # return [
-        #     {"label": "car", "bbox": (100, 100, 200, 150), "confidence": 0.9},
-        #     {"label": "license_plate", "bbox": (120, 130, 180, 140), "confidence": 0.85}
-        # ]
+    def detect(self, frame, reader):
+        results = self.model(frame)
+        plate_number = ""
+        for result in results:
+            for box in result.boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])  
+                cropped = frame[y1:y2, x1:x2]  
+
+                text = reader.readtext(cropped)
+                if text:
+                    plate_number = " ".join([entry[1] for entry in text])  
+                    print("Erkanntes Kennzeichen:", plate_number)
+
+                    cv2.putText(frame, plate_number, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 
+                                1, (0, 255, 0), 2, cv2.LINE_AA)
+
+                # Bounding Box zeichnen
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        # Live-Bild mit Bounding Box anzeigen
+        cv2.imshow("Nummernschild-Erkennung", frame)
+        return plate_number
+        
 
 # Nummernschild-OCR-Modul
 class LicensePlateOCR:
     def __init__(self):
-        # Hier echte OCR initialisieren (z.B. Tesseract)
-        pass
-    
+        self.reader = easyocr.Reader(["en", "de"])
+        
     def read_plate(self, plate_region):
         # Dummy-Implementierung
         return "ABC123"
@@ -165,9 +184,9 @@ class LicensePlateApp:
         self.update()
         self.root.mainloop()
 
-    def process_frame(self, frame):
-        #detections = self.detector.detect(frame)
-        current_plate = None
+    def process_frame(self, frame, reader):
+        current_plate = self.detector.detect(frame, reader)
+        #current_plate = None
         cars_detected = 0
 
         # Bounding Boxes zeichnen
@@ -207,7 +226,7 @@ class LicensePlateApp:
     def update(self):
         ret, frame = self.cap.read()
         if ret:
-            frame, plate, cars_detected = self.process_frame(frame)
+            frame, plate, cars_detected = self.process_frame(frame, self.ocr.reader)
             self.stats.update(detected_cars=cars_detected)
             self.update_access(plate)
             self.gui.stats_label.configure(text=self.stats.get_stats())
