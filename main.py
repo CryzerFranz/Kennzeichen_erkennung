@@ -180,14 +180,18 @@ class LicensePlateApp:
         self.stats = Statistics()
         self.gui = LicensePlateGUI(self.root)
         self.cap = cv2.VideoCapture(0)
+        self.tmp_plate = ""
         
         self.update()
         self.root.mainloop()
 
     def process_frame(self, frame, reader):
         current_plate = self.detector.detect(frame, reader)
+        
         #current_plate = None
         cars_detected = 0
+        if current_plate != "" and self.tmp_plate != current_plate:
+            cars_detected+=1
 
         # Bounding Boxes zeichnen
         # for detection in detections:
@@ -211,7 +215,9 @@ class LicensePlateApp:
         return frame, current_plate, cars_detected
 
     def update_access(self, plate):
-        if plate:
+        
+    
+        if plate and (self.tmp_plate == "" or self.tmp_plate != plate):
             self.gui.plate_text.configure(text=f"Erkanntes Nummernschild: {plate}")
             if plate in self.gui.allowed_plates:
                 self.gui.access_label.configure(text="Access: Granted", text_color="green")
@@ -219,6 +225,10 @@ class LicensePlateApp:
             else:
                 self.gui.access_label.configure(text="Access: Denied", text_color="red")
                 self.stats.update(denied=True)
+            if self.tmp_plate == "":
+                self.tmp_plate = plate
+            if self.tmp_plate != plate:
+                self.tmp_plate = plate
         else:
             self.gui.plate_text.configure(text="Erkanntes Nummernschild: Keine Erkennung")
             self.gui.access_label.configure(text="Access: Waiting", text_color="black")
