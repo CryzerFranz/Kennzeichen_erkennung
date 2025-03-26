@@ -7,7 +7,8 @@ import csv
 import os
 import easyocr
 from ultralytics import YOLO
-
+import paho.mqtt.client as mqtt
+import time
 
 
 
@@ -171,9 +172,42 @@ class LicensePlateGUI:
             self.update_plate_list()
             self.save_allowed_plates()
 
+class MQTT_Client:
+    def __init__(self):
+        self.client = mqtt.Client()
+        #self.client.on_connect = on_connect
+        self.client.on_message = self.on_message
+        self.client.on_disconnect = self.on_disconnect
+        self.broker_address = "192.168.99.158"
+        self.port = 1883
+        
+        try:
+            self.client.connect(self.broker_address, self.port)
+        except Exception as e:
+            print(f"Verbindungsfehler: {e}")
+            exit(1)
+        
+    def on_message(self, client, userdata, msg):
+        print(f"Topic: {msg.topic} | Nachricht: {msg.payload.decode()}")
+
+    def on_disconnect(self, client, userdata, rc):
+        print("Verbindung zum Broker getrennt")
+        
+    def connect(self):
+        try:
+            self.client.connect(self.broker_address, self.port)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"Verbindungsfehler: {e}")
+            
+    def disconnect(self):
+        self.client.loop_stop()
+        self.client.disconnect()
+    
 # Hauptklasse
 class LicensePlateApp:
-    def __init__(self):
+    def __init__(self, mqtt_client):
+        self.mqtt = mqtt_client
         self.root = ctk.CTk()
         self.detector = ObjectDetector()
         self.ocr = LicensePlateOCR()
@@ -187,30 +221,10 @@ class LicensePlateApp:
 
     def process_frame(self, frame, reader):
         current_plate = self.detector.detect(frame, reader)
-        
-        #current_plate = None
+
         cars_detected = 0
         if current_plate != "" and self.tmp_plate != current_plate:
             cars_detected+=1
-
-        # Bounding Boxes zeichnen
-        # for detection in detections:
-        #     x, y, w, h = detection["bbox"]
-        #     label = detection["label"]
-        #     cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
-        #     cv2.putText(frame, label, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-            
-        #     if label == "car":
-        #         cars_detected += 1
-            
-        #     if label == "license_plate":
-        #         zx1, zy1, zx2, zy2 = self.gui.detection_zone
-        #         if x > zx1 and y > zy1 and w < zx2 and h < zy2:
-        #             current_plate = self.ocr.read_plate(frame[y:h, x:w])
-
-        # Erkennungszone zeichnen
-        # cv2.rectangle(frame, (self.gui.detection_zone[0], self.gui.detection_zone[1]), 
-        #              (self.gui.detection_zone[2], self.gui.detection_zone[3]), (0, 0, 255), 2)
 
         return frame, current_plate, cars_detected
 
@@ -222,9 +236,13 @@ class LicensePlateApp:
             if plate in self.gui.allowed_plates:
                 self.gui.access_label.configure(text="Access: Granted", text_color="green")
                 self.stats.update(granted=True)
+                self.mqtt.client.publish("parkhaus/einfahrt", "granted")
+                time.sleep(2)
             else:
                 self.gui.access_label.configure(text="Access: Denied", text_color="red")
                 self.stats.update(denied=True)
+                self.mqtt.client.publish("parkhaus/einfahrt", "denied")
+                time.sleep(2)
             if self.tmp_plate == "":
                 self.tmp_plate = plate
             if self.tmp_plate != plate:
@@ -255,4 +273,7 @@ class LicensePlateApp:
             self.cap.release()
 
 if __name__ == "__main__":
-    app = LicensePlateApp()
+    mqtt_client = MQTT_Client()
+    mqtt_client.connect()
+    
+    app = LicensePlateApp(mqtt_client)
