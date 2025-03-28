@@ -22,22 +22,28 @@ class ObjectDetector:
         plate_number = ""
         for result in results:
             for box in result.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])  
-                cropped = frame[y1:y2, x1:x2]  
-
-                text = reader.readtext(cropped)
+                x1, y1, x2, y2 = map(int, box.xyxy[0]) 
+                x1_new = max(x1 + 22, 0) 
+                cropped = frame[y1:y2, x1_new:x2]  
+                gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+            
+                _, binary = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
+                
+                text = reader.readtext(binary)
                 if text:
+                    cv2.imshow("Nummernschild-Erkennung", binary)
+
                     plate_number = " ".join([entry[1] for entry in text])  
                     print("Erkanntes Kennzeichen:", plate_number)
 
-                    cv2.putText(frame, plate_number, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 
+                    cv2.putText(frame, plate_number, (x1_new, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 
                                 1, (0, 255, 0), 2, cv2.LINE_AA)
 
                 # Bounding Box zeichnen
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(frame, (x1_new, y1), (x2, y2), (0, 255, 0), 2)
 
         # Live-Bild mit Bounding Box anzeigen
-        cv2.imshow("Nummernschild-Erkennung", frame)
+       
         return plate_number
         
 
