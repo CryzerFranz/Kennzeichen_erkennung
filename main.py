@@ -79,8 +79,9 @@ class Statistics:
 
 # GUI-Modul
 class LicensePlateGUI:
-    def __init__(self, root):
+    def __init__(self, root, mqtt_client):
         self.root = root
+        self.mqtt_client = mqtt_client  # Speichere den MQTT-Client
         self.root.title("License Plate Recognition")
         self.root.geometry("1200x800")
         self.detection_zone = (200, 200, 400, 300)  # x1, y1, x2, y2
@@ -135,6 +136,10 @@ class LicensePlateGUI:
         self.access_label = ctk.CTkLabel(self.root, text="Access: Waiting", font=("Arial", 24))
         self.access_label.grid(row=2, column=0, padx=10, pady=10)
 
+        # Broker-Status
+        self.broker_status_label = ctk.CTkLabel(self.root, text="Broker: Verbindungsstatus wird geprüft...", font=("Arial", 16))
+        self.broker_status_label.grid(row=3, column=1, padx=10, pady=5, sticky="n")
+
         # Statistikfeld
         self.stats_frame = ctk.CTkFrame(self.root)
         self.stats_frame.grid(row=2, column=1, padx=10, pady=10)
@@ -163,6 +168,13 @@ class LicensePlateGUI:
         for plate in self.allowed_plates:
             self.plate_list.insert("end", f"{plate}\n")
 
+    def update_broker_status(self):
+        """Aktualisiert den Verbindungsstatus des MQTT-Brokers in der GUI"""
+        if self.mqtt_client.client.is_connected():
+            self.broker_status_label.configure(text="Broker: Verbunden", text_color="green")
+        else:
+            self.broker_status_label.configure(text="Broker: Nicht verbunden", text_color="red")
+
     def add_plate(self):
         new_plate = self.new_plate_entry.get().strip()
         if new_plate and new_plate not in self.allowed_plates:
@@ -181,10 +193,11 @@ class LicensePlateGUI:
 class MQTT_Client:
     def __init__(self):
         self.client = mqtt.Client()
+        #self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         #self.client.on_connect = on_connect
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
-        self.broker_address = "192.168.99.158"
+        self.broker_address = "172.5.233.116"
         self.port = 1883
         
         try:
@@ -218,7 +231,7 @@ class LicensePlateApp:
         self.detector = ObjectDetector()
         self.ocr = LicensePlateOCR()
         self.stats = Statistics()
-        self.gui = LicensePlateGUI(self.root)
+        self.gui = LicensePlateGUI(self.root, self.mqtt)
         self.cap = cv2.VideoCapture(0)
         self.tmp_plate = ""
         
@@ -264,6 +277,7 @@ class LicensePlateApp:
             self.stats.update(detected_cars=cars_detected)
             self.update_access(plate)
             self.gui.stats_label.configure(text=self.stats.get_stats())
+            self.gui.update_broker_status()  # Aktualisiere den Broker-Status
 
             # Bild anzeigen
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
