@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import cv2
+import json
 import numpy as np
 from PIL import Image, ImageTk
 from datetime import datetime
@@ -9,7 +10,6 @@ import easyocr
 from ultralytics import YOLO
 import paho.mqtt.client as mqtt
 import time
-
 
 
 # Objekterkennung-Modul
@@ -23,11 +23,11 @@ class ObjectDetector:
         for result in results:
             for box in result.boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0]) 
-                x1_new = max(x1 + 22, 0) 
+                x1_new = max(x1 + 0, 0) 
                 cropped = frame[y1:y2, x1_new:x2]  
                 gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
             
-                _, binary = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
+                _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY_INV)
                 
                 text = reader.readtext(binary)
                 if text:
@@ -197,8 +197,9 @@ class MQTT_Client:
         #self.client.on_connect = on_connect
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
-        self.broker_address = "172.5.233.116"
+        self.broker_address = "172.5.232.218"
         self.port = 1883
+        self.message = 0
         
         try:
             self.client.connect(self.broker_address, self.port)
@@ -208,6 +209,14 @@ class MQTT_Client:
         
     def on_message(self, client, userdata, msg):
         print(f"Topic: {msg.topic} | Nachricht: {msg.payload.decode()}")
+        if(msg.topic == "parkhaus/einfahrt_motion"):
+            if msg.payload.decode() == "1": 
+                self.message = 1
+            else:
+                self.message = 0
+            
+        
+        
 
     def on_disconnect(self, client, userdata, rc):
         print("Verbindung zum Broker getrennt")
@@ -216,8 +225,10 @@ class MQTT_Client:
         try:
             self.client.connect(self.broker_address, self.port)
             self.client.loop_start()
+            self.client.subscribe("parkhaus/einfahrt_motion")
         except Exception as e:
             print(f"Verbindungsfehler: {e}")
+            
             
     def disconnect(self):
         self.client.loop_stop()
@@ -239,7 +250,9 @@ class LicensePlateApp:
         self.root.mainloop()
 
     def process_frame(self, frame, reader):
-        current_plate = self.detector.detect(frame, reader)
+        current_plate = ""
+        if self.mqtt.message == 1:
+            current_plate = self.detector.detect(frame, reader)
 
         cars_detected = 0
         if current_plate != "" and self.tmp_plate != current_plate:
@@ -255,12 +268,23 @@ class LicensePlateApp:
             if plate in self.gui.allowed_plates:
                 self.gui.access_label.configure(text="Access: Granted", text_color="green")
                 self.stats.update(granted=True)
-                self.mqtt.client.publish("parkhaus/einfahrt", "granted")
+                payload = {
+                    "status": "granted",
+                    "kennzeichen": plate
+                }
+                json_payload = json.dumps(payload)
+                self.mqtt.client.publish("parkhaus/einfahrt", json_payload)
+                #self.mqtt.client.publish("parkhaus/einfahrt", "granted")
                 time.sleep(2)
             else:
                 self.gui.access_label.configure(text="Access: Denied", text_color="red")
                 self.stats.update(denied=True)
-                self.mqtt.client.publish("parkhaus/einfahrt", "denied")
+                payload = {
+                    "status": "denied",
+                    "kennzeichen": plate
+                }
+                json_payload = json.dumps(payload)
+                self.mqtt.client.publish("parkhaus/einfahrt", json_payload)
                 time.sleep(2)
             if self.tmp_plate == "":
                 self.tmp_plate = plate
@@ -271,20 +295,22 @@ class LicensePlateApp:
             self.gui.access_label.configure(text="Access: Waiting", text_color="black")
 
     def update(self):
+        #if self.mqtt.message == 1:
         ret, frame = self.cap.read()
         if ret:
-            frame, plate, cars_detected = self.process_frame(frame, self.ocr.reader)
-            self.stats.update(detected_cars=cars_detected)
-            self.update_access(plate)
-            self.gui.stats_label.configure(text=self.stats.get_stats())
-            self.gui.update_broker_status()  # Aktualisiere den Broker-Status
+                print(self.mqtt.message)
+                frame, plate, cars_detected = self.process_frame(frame, self.ocr.reader)
+                self.stats.update(detected_cars=cars_detected)
+                self.update_access(plate)
+                self.gui.stats_label.configure(text=self.stats.get_stats())
+                self.gui.update_broker_status()  # Aktualisiere den Broker-Status
 
-            # Bild anzeigen
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame)
-            imgtk = ImageTk.PhotoImage(image=img)
-            self.gui.webcam_label.configure(image=imgtk)
-            self.gui.webcam_label.image = imgtk
+                # Bild anzeigen
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame)
+                imgtk = ImageTk.PhotoImage(image=img)
+                self.gui.webcam_label.configure(image=imgtk)
+                self.gui.webcam_label.image = imgtk
 
         self.root.after(10, self.update)
 
