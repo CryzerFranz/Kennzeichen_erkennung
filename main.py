@@ -27,7 +27,7 @@ class ObjectDetector:
                 cropped = frame[y1:y2, x1_new:x2]  
                 gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
             
-                _, binary = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY_INV)
+                _, binary = cv2.threshold(gray, 38, 255, cv2.THRESH_BINARY_INV)
                 
                 text = reader.readtext(binary)
                 if text:
